@@ -14,12 +14,30 @@ dotenv.config();
 
 const app = express();
 
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5175",
+  "https://syedishaq.me",
+  process.env.CLIENT_URL,
+  process.env.FRONTEND_URL,
+  ...(process.env.CLIENT_URLS ? process.env.CLIENT_URLS.split(",") : [])
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5175",
-    credentials: true
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(null, false);
+    },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-webhook-secret"]
   })
 );
+
+app.options("*", cors());
 
 app.use(express.json({ limit: "30mb" }));
 app.use(express.urlencoded({ extended: true }));
