@@ -3,6 +3,8 @@ const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
 
+dotenv.config();
+
 const connectDB = require("./config/db");
 const seedDefaultTemplates = require("./utils/defaultTemplates");
 const templateRoutes = require("./routes/templateRoutes");
@@ -10,7 +12,6 @@ const cardRoutes = require("./routes/cardRoutes");
 const uploadRoutes = require("./routes/uploadRoutes");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const googleFormRoutes = require("./routes/googleFormRoutes");
-dotenv.config();
 
 const app = express();
 
@@ -47,6 +48,36 @@ app.get("/", (req, res) => {
   res.json({ message: "ID Card Generator API is running" });
 });
 
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
+
+let serverReadyPromise = null;
+
+const prepareServer = async () => {
+  if (!serverReadyPromise) {
+    serverReadyPromise = (async () => {
+      await connectDB();
+      await seedDefaultTemplates();
+    })().catch(error => {
+      serverReadyPromise = null;
+      throw error;
+    });
+  }
+
+  return serverReadyPromise;
+};
+
+const ensureServerReady = async (req, res, next) => {
+  try {
+    await prepareServer();
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
+app.use("/api", ensureServerReady);
 app.use("/api/templates", templateRoutes);
 app.use("/api/cards", cardRoutes);
 app.use("/api/upload", uploadRoutes);
@@ -57,24 +88,17 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-let isServerReady = false;
-
-const prepareServer = async () => {
-  if (!isServerReady) {
-    await connectDB();
-    await seedDefaultTemplates();
-    isServerReady = true;
-  }
-};
-
-prepareServer();
-
 if (!process.env.VERCEL) {
-  prepareServer().then(() => {
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
+  prepareServer()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+      });
+    })
+    .catch(error => {
+      console.error("Server startup failed:", error.message);
+      process.exit(1);
     });
-  });
 }
 
 module.exports = app;
